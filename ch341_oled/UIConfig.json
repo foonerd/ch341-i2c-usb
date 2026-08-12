@@ -1,0 +1,172 @@
+{
+  "page": {
+    "label": "TRANSLATE.PLUGIN_NAME"
+  },
+  "sections": [
+    {
+      "id": "section_display",
+      "element": "section",
+      "label": "TRANSLATE.DISPLAY_SECTION",
+      "icon": "fa-television",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "system_hardware/ch341_oled",
+        "method": "saveDisplaySettings"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.SAVE",
+        "data": [
+          "oledModel",
+          "xoffset",
+          "i2cAddress",
+          "rotateDisplay"
+        ]
+      },
+      "content": [
+        {
+          "id": "oledModel",
+          "element": "input",
+          "type": "text",
+          "label": "TRANSLATE.OLED_MODEL",
+          "doc": "TRANSLATE.OLED_MODEL_DOC",
+          "value": "SSD1306,128X64_NONAME"
+        },
+        {
+          "id": "xoffset",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.XOFFSET",
+          "doc": "TRANSLATE.XOFFSET_DOC",
+          "attributes": [
+            { "min": 0 },
+            { "max": 8 }
+          ],
+          "value": 0
+        },
+        {
+          "id": "i2cAddress",
+          "element": "input",
+          "type": "text",
+          "label": "TRANSLATE.I2C_ADDRESS",
+          "doc": "TRANSLATE.I2C_ADDRESS_DOC",
+          "value": ""
+        },
+        {
+          "id": "rotateDisplay",
+          "element": "switch",
+          "label": "TRANSLATE.ROTATE",
+          "doc": "TRANSLATE.ROTATE_DOC",
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "section_adapter",
+      "element": "section",
+      "label": "TRANSLATE.ADAPTER_SECTION",
+      "icon": "fa-usb",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "system_hardware/ch341_oled",
+        "method": "saveAdapterSettings"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.SAVE",
+        "data": [
+          "ch341Index",
+          "ch341Speed"
+        ]
+      },
+      "content": [
+        {
+          "id": "ch341Index",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.CH341_INDEX",
+          "doc": "TRANSLATE.CH341_INDEX_DOC",
+          "attributes": [
+            { "min": 0 },
+            { "max": 7 }
+          ],
+          "value": 0
+        },
+        {
+          "id": "ch341Speed",
+          "element": "select",
+          "label": "TRANSLATE.CH341_SPEED",
+          "doc": "TRANSLATE.CH341_SPEED_DOC",
+          "value": { "value": 2, "label": "400 kHz (default)" },
+          "options": [
+            { "value": 0, "label": "20 kHz" },
+            { "value": 1, "label": "100 kHz" },
+            { "value": 2, "label": "400 kHz (default)" },
+            { "value": 3, "label": "750 kHz" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "section_layout",
+      "element": "section",
+      "label": "TRANSLATE.LAYOUT_SECTION",
+      "icon": "fa-bar-chart",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "system_hardware/ch341_oled",
+        "method": "saveLayoutSettings"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.SAVE",
+        "data": [
+          "numberOfBars",
+          "gapBetweenBars",
+          "frameRate",
+          "spectrumEnabled"
+        ]
+      },
+      "content": [
+        {
+          "id": "numberOfBars",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.BARS",
+          "attributes": [
+            { "min": 2 },
+            { "max": 60 }
+          ],
+          "value": 20
+        },
+        {
+          "id": "gapBetweenBars",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.GAP",
+          "attributes": [
+            { "min": 0 },
+            { "max": 8 }
+          ],
+          "value": 2
+        },
+        {
+          "id": "frameRate",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.FRAMERATE",
+          "doc": "TRANSLATE.FRAMERATE_DOC",
+          "attributes": [
+            { "min": 1 },
+            { "max": 60 }
+          ],
+          "value": 50
+        },
+        {
+          "id": "spectrumEnabled",
+          "element": "switch",
+          "label": "TRANSLATE.SPECTRUM",
+          "doc": "TRANSLATE.SPECTRUM_DOC",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "PLUGIN_NAME": "CH341 OLED",
+  "SAVE": "Save",
+
+  "DISPLAY_SECTION": "Display",
+  "OLED_MODEL": "Panel model",
+  "OLED_MODEL_DOC": "Controller and model, as reported by 'mpd_oled -o help'. For a 128x64 SSD1306 try SSD1306,128X64_NONAME first, then SSD1306,128X64 or SSD1306,128X64_ALT0. Many panels sold as SSD1306 are in fact SH1106, so SH1106,128X64_NONAME is also worth trying.",
+  "XOFFSET": "Column offset",
+  "XOFFSET_DOC": "Shifts the image right by this many pixels. Increase it if the first character on a line is clipped at the left edge. This happens when the panel's visible area starts partway into the controller's memory, which varies between panels sold under the same name. Try 1, 2 and 3.",
+  "I2C_ADDRESS": "I2C address",
+  "I2C_ADDRESS_DOC": "Leave empty for the default of 3c. Set to 3d if your panel uses the alternate address.",
+  "ROTATE": "Rotate 180 degrees",
+  "ROTATE_DOC": "Turn the image upside down, for a panel mounted inverted.",
+
+  "ADAPTER_SECTION": "USB adapter",
+  "CH341_INDEX": "Adapter number",
+  "CH341_INDEX_DOC": "Which CH341A to use when more than one is plugged in. 0 is the first found.",
+  "CH341_SPEED": "Bus speed",
+  "CH341_SPEED_DOC": "400 kHz gives roughly three times the frame rate of 100 kHz and is the default. Reduce it if long leads or weak pull-up resistors make the display unreliable.",
+
+  "LAYOUT_SECTION": "Layout",
+  "BARS": "Number of spectrum bars",
+  "GAP": "Gap between bars",
+  "FRAMERATE": "Frame rate",
+  "FRAMERATE_DOC": "Requested frames per second. The USB adapter limits full-screen redraws to roughly 26 per second at 400 kHz, so higher values have no effect.",
+  "SPECTRUM": "Spectrum analyser",
+  "SPECTRUM_DOC": "Show the audio spectrum. This inserts a tap into the audio chain to obtain a copy of the playback stream. Turn it off to leave the audio path untouched; the spectrum area will then stay blank."
+}

@@ -1,0 +1,50 @@
+{
+  "oledModel": {
+    "value": "SSD1306,128X64_NONAME",
+    "type": "string"
+  },
+  "xoffset": {
+    "value": 0,
+    "type": "number"
+  },
+  "i2cAddress": {
+    "value": "",
+    "type": "string"
+  },
+  "ch341Index": {
+    "value": 0,
+    "type": "number"
+  },
+  "ch341Speed": {
+    "value": 2,
+    "type": "number"
+  },
+  "numberOfBars": {
+    "value": 20,
+    "type": "number"
+  },
+  "gapBetweenBars": {
+    "value": 2,
+    "type": "number"
+  },
+  "frameRate": {
+    "value": 50,
+    "type": "number"
+  },
+  "layout": {
+    "value": "t",
+    "type": "string"
+  },
+  "pauseScreenType": {
+    "value": "s",
+    "type": "string"
+  },
+  "rotateDisplay": {
+    "value": false,
+    "type": "boolean"
+  },
+  "spectrumEnabled": {
+    "value": true,
+    "type": "boolean"
+  }
+}
