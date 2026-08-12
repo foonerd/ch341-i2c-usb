@@ -1,0 +1,15 @@
+# CH341A in I2C/SPI/GPIO mode (1a86:5512).
+#
+# Grants non-root access so that an application using libch341 does not
+# have to run as root. Adjust GROUP to suit; on Volumio the audio group
+# is a reasonable choice since the display service already runs there.
+#
+# Install:
+#   sudo cp 60-ch341-i2c.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#
+# Note: the CH341A in UART mode enumerates as 1a86:5523 and is not
+# matched here. Check the mode jumper on the adapter board.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", ATTR{idProduct}=="5512", MODE="0660", GROUP="plugdev", TAG+="uaccess"
