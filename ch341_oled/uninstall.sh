@@ -19,6 +19,9 @@ sudo systemctl daemon-reload
 sudo rm -f /etc/udev/rules.d/60-ch341-i2c.rules
 sudo udevadm control --reload-rules 2>/dev/null || true
 
+# Privileged commands
+sudo rm -f /etc/sudoers.d/volumio-ch341_oled
+
 # Payload
 #
 # mpd_oled_cava is removed too. The armhf mpd_oled plugin symlinks that

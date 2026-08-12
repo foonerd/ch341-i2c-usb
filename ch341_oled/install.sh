@@ -3,7 +3,8 @@
 # CH341 OLED plugin - install
 # Copyright (c) 2026 foonerd
 #
-# Installs two prebuilt binaries, a udev rule and a systemd unit.
+# Installs two prebuilt binaries, a udev rule, a sudoers drop-in and a
+# systemd unit.
 #
 # There is deliberately no apt here. The payload was linked against only
 # libraries present on a stock Volumio image, so the plugin installs with
@@ -16,9 +17,8 @@
 # libiniparser is statically linked into mpd_oled_cava because it is the
 # one library cava needs that Volumio does not ship.
 #
-# Nothing outside the paths listed in uninstall.sh is touched, and no
-# system configuration file is modified, so a system update leaves all of
-# it alone.
+# No system configuration file is modified, so a system update leaves all
+# of this alone.
 
 set -e
 
@@ -57,6 +57,20 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=1a86 || true
 
 ########################################################################
+# Privileged commands
+#
+# index.js runs as volumio and needs to control the service. The drop-in
+# is named volumio-<plugin> so it is identifiable and so uninstall can
+# remove it without touching anything else. Scoped to this unit only.
+########################################################################
+echo "Installing sudoers drop-in"
+sudo tee /etc/sudoers.d/volumio-ch341_oled >/dev/null <<'EOF'
+volumio ALL=(ALL) NOPASSWD: /bin/systemctl start ch341_oled.service, /bin/systemctl stop ch341_oled.service, /bin/systemctl restart ch341_oled.service
+EOF
+sudo chmod 0440 /etc/sudoers.d/volumio-ch341_oled
+sudo visudo -c -f /etc/sudoers.d/volumio-ch341_oled
+
+########################################################################
 # Remove any out-of-tree CH341 kernel module
 #
 # Two drivers contending for one adapter has been observed to deadlock
@@ -86,8 +100,14 @@ echo "Installing the ch341_oled service"
 # first generates the real script on start.
 if [ ! -e "$PLUGIN_DIR/start.sh" ]; then
   printf '#!/bin/bash\nexit 0\n' > "$PLUGIN_DIR/start.sh"
-  chmod 755 "$PLUGIN_DIR/start.sh"
 fi
+chmod 755 "$PLUGIN_DIR/start.sh"
+
+# install.sh is executed as root, so everything created above is
+# root-owned. index.js runs as volumio and rewrites start.sh on every
+# settings change, so the plugin directory has to be handed over or each
+# save fails with EACCES.
+sudo chown -R volumio:volumio "$PLUGIN_DIR"
 
 sudo tee /etc/systemd/system/ch341_oled.service >/dev/null <<EOF
 [Unit]
