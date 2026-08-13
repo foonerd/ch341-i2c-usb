@@ -175,6 +175,17 @@ ch341Oled.prototype.buildArgs = function () {
   // showing elapsed time to the second.
   args.push('-u', String(self.config.get('pollSeconds', 1.0)));
 
+  // Spectrum delay.
+  //
+  // The ALSA tap feeding cava sits before the audio output buffer, so
+  // the bars run ahead of the sound by whatever that buffer holds. The
+  // amount depends on the output device, so the default is 0 and the
+  // user dials it in.
+  var delayMs = self.config.get('spectrumDelayMs', 0);
+  if (delayMs > 0) {
+    args.push('-D', String(delayMs));
+  }
+
   var o = self.config.get('oledModel', 'SSD1306,128X64_NONAME');
   o += ',I2C';
   o += ',ch341=' + self.config.get('ch341Index', 0);
@@ -297,6 +308,7 @@ ch341Oled.prototype.getUIConfig = function () {
       uiconf.sections[2].content[1].value = self.config.get('gapBetweenBars', 2);
       uiconf.sections[2].content[2].value = self.config.get('frameRate', 50);
       uiconf.sections[2].content[3].value = self.config.get('spectrumEnabled', true);
+      uiconf.sections[2].content[4].value = self.config.get('spectrumDelayMs', 0);
 
       defer.resolve(uiconf);
     })
@@ -340,6 +352,7 @@ ch341Oled.prototype.saveLayoutSettings = function (data) {
   self.config.set('gapBetweenBars', parseInt(data.gapBetweenBars, 10) || 2);
   self.config.set('frameRate', parseInt(data.frameRate, 10) || 50);
   self.config.set('spectrumEnabled', !!data.spectrumEnabled);
+  self.config.set('spectrumDelayMs', parseInt(data.spectrumDelayMs, 10) || 0);
 
   return self.applyAndReport();
 };
