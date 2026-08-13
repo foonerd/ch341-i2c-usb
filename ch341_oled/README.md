@@ -188,18 +188,32 @@ this configuration.
 
 ## Building the payload yourself
 
-The binaries in `bin/` come from
-[foonerd/libu8g2arm](https://github.com/foonerd/libu8g2arm/tree/feat/ch341-usb-transport)
-and [wheaten/mpd_oled_dev](https://github.com/wheaten/mpd_oled_dev). The
-full build procedure is in
-[../doc/volumio4-x86-install.md](../doc/volumio4-x86-install.md), which
-also covers running `mpd_oled` without the plugin.
+The binaries in `bin/` are produced by the containerised build in
+[../build/](../build/):
+
+```
+cd ..
+./build/docker/run-docker-mpd_oled.sh amd64
+cp build/out/amd64/* ch341_oled/bin/
+```
+
+One Docker run builds all three components from source - libu8g2arm with
+the CH341 transport, cava, and mpd_oled - and fails if either binary
+ends up depending on a library absent from a stock Volumio image.
+
+Sources:
+[foonerd/libu8g2arm](https://github.com/foonerd/libu8g2arm/tree/feat/ch341-usb-transport),
+[foonerd/mpd_oled_dev](https://github.com/foonerd/mpd_oled_dev/tree/feat/volumio-x86)
+and [karlstav/cava](https://github.com/karlstav/cava).
+
+To build on the device by hand instead, or to run `mpd_oled` without the
+plugin, see [../doc/volumio4-x86-install.md](../doc/volumio4-x86-install.md).
 
 ## Licence
 
 MIT. See [../LICENSE](../LICENSE).
 
-`mpd_oled` is by Adrian Rossiter and contributors; the x86 work builds
-on Wheaten's development branch. cava is by Karl Stavestrand. The
+`mpd_oled` is by Adrian Rossiter and contributors; the `-L` layout
+option originated in Wheaten's fork. cava is by Karl Stavestrand. The
 Volumio plugin conventions and the ALSA contribution pattern follow the
 existing `mpd_oled`, `peppyspectrum` and `stylish_player` plugins.

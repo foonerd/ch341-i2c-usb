@@ -66,8 +66,9 @@ adapter has been observed to deadlock the kernel side.
 | | What it is | Start here |
 |---|---|---|
 | **Library** | `libch341.a` plus a header, for your own application | [Building](#building) below |
-| **Manual install** | Build `mpd_oled` from source on a Volumio 4 x86 system | [doc/volumio4-x86-install.md](doc/volumio4-x86-install.md) |
 | **Volumio plugin** | Prebuilt, installs in one step, includes the spectrum analyser | [ch341_oled/](ch341_oled/) |
+| **Manual install** | Build `mpd_oled` from source on a Volumio 4 x86 system | [doc/volumio4-x86-install.md](doc/volumio4-x86-install.md) |
+| **Payload build** | Reproducible container build of the plugin binaries | [build/](build/) |
 
 The plugin is the easiest route on Volumio and the only one that gets
 the spectrum analyser working. The manual install is useful if you want
@@ -239,7 +240,15 @@ byte, rather than taken from a datasheet.
 [foonerd/libu8g2arm](https://github.com/foonerd/libu8g2arm/tree/feat/ch341-usb-transport)
 — a fork of antiprism's u8g2 port with this transport added, so u8g2
 applications can use a CH341A with no code changes beyond a device
-string.
+string. Also adds an `xoffset=` override for panels whose visible area
+starts partway into controller memory, and fixes `i2c_address=` having
+no effect.
+
+[foonerd/mpd_oled_dev](https://github.com/foonerd/mpd_oled_dev/tree/feat/volumio-x86)
+— a fork of antiprism's mpd_oled development branch carrying the x86
+work: the `-L` layout option, a `-u` option for the player status
+polling interval, and a fix so the Volumio path no longer requires an
+MPD connection.
 
 ## Licence
 

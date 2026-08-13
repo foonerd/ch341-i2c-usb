@@ -3,6 +3,15 @@
 Build instructions for `mpd_oled` on Volumio 4 (x86_64, Bookworm, kernel
 6.12.x) using a CH341A USB adapter and a userspace transport.
 
+> **There is an easier way.** The [ch341_oled plugin](../ch341_oled/)
+> installs prebuilt binaries in one step, needs no toolchain on the
+> device, and is the only route that gets the spectrum analyser working.
+> This document is for building from source by hand, or for
+> understanding how the parts fit together.
+>
+> If you want to build the binaries yourself but not on the device, the
+> [containerised build](../build/) does all three components in one run.
+
 The result survives OTA updates. There is no kernel module, no kernel
 headers, no vermagic to match, no module to blacklist, and no
 `/dev/i2c-N` bus number that shifts between reboots.
@@ -139,7 +148,7 @@ Not installed system-wide. `mpd_oled` links the build tree directly.
 ### mpd_oled
 
 ```
-git clone https://github.com/wheaten/mpd_oled_dev.git
+git clone -b feat/volumio-x86 https://github.com/foonerd/mpd_oled_dev.git
 cd mpd_oled_dev
 ./bootstrap
 LIBU8G2_DIR=../libu8g2arm \
@@ -150,6 +159,12 @@ make -j$(nproc)
 sudo make install-strip
 cd ..
 ```
+
+This is a fork of antiprism's development branch carrying the x86 work:
+the `-L` layout option originally from Wheaten's fork, a `-u` option for
+the player status polling interval, and a fix so the Volumio path no
+longer requires an MPD connection - relevant when the active source is
+AirPlay, Spotify Connect or Tidal Connect rather than MPD.
 
 The `LIBS=` is required and easy to miss. `mpd_oled` links
 `libu8g2arm.a`, and a static archive carries no dependency information,
@@ -222,6 +237,16 @@ system gave roughly 26 full frames per second against roughly 8 at
 bus unreliable.
 
 `i2c_address=3d` if your panel answers at 0x3d rather than 0x3c.
+
+`-L s` draws the spectrum full width with a frequency scale and no track
+information. `-L t` is the default and shows track information alongside
+a half-width spectrum.
+
+`-u <secs>` sets how often the player status is polled, default 0.3. On
+Volumio each poll is an HTTP request to the player API and the backend
+logs every call, so the default puts several requests per second into
+the journal continuously. `-u 1.0` is indistinguishable on a display
+showing elapsed time to the second, and is what the plugin uses.
 
 ## Run it at boot
 
