@@ -6,16 +6,24 @@
 # Installs two prebuilt binaries, a udev rule, a sudoers drop-in and a
 # systemd unit.
 #
-# There is deliberately no apt here. The payload was linked against only
+# There is deliberately no apt here. The payload links only against
 # libraries present on a stock Volumio image, so the plugin installs with
 # no network access and no package version drift:
 #
 #   mpd_oled        libmpdclient2 (via mpc), libusb-1.0-0 (via usbutils),
 #                   libudev, libm, libgcc_s, libpthread, libc
-#   mpd_oled_cava   libasound2 (Assets), libfftw3, libm, libc
+#   mpd_oled_cava   libasound2 (explicit in VolumioBase.conf), libm, libc
 #
-# libiniparser is statically linked into mpd_oled_cava because it is the
-# one library cava needs that Volumio does not ship.
+# libiniparser and libfftw3 are statically linked into mpd_oled_cava.
+# Neither is on a stock image - both were mistakenly assumed present
+# from a development machine that had them installed as build
+# dependencies. A field test on a fresh Wyse 3040 caught libfftw3:
+#
+#   mpd_oled_cava: error while loading shared libraries: libfftw3.so.3
+#
+# The authority on what a stock image contains is
+# volumio-os/recipes/base/VolumioBase.conf, not a machine that has been
+# built on.
 #
 # No system configuration file is modified, so a system update leaves all
 # of this alone.

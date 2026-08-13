@@ -95,11 +95,32 @@ cd cava
 ./autogen.sh
 ./configure --disable-input-portaudio --disable-input-sndio \
             --disable-output-ncurses --disable-input-pulse \
-            --program-prefix=mpd_oled_
+            --program-prefix=mpd_oled_ \
+            LIBS="/usr/lib/x86_64-linux-gnu/libiniparser.a /usr/lib/x86_64-linux-gnu/libfftw3.a"
 make -j$(nproc)
 sudo make install-strip
 cd ..
 ```
+
+The `LIBS=` statically links iniparser and fftw. Neither is on a stock
+Volumio image, and the `-dev` packages installed above bring in their
+shared libraries, so without this the binary builds and runs on the
+machine you built it on and fails elsewhere with:
+
+```
+mpd_oled_cava: error while loading shared libraries: libfftw3.so.3
+```
+
+If you are only ever running it on the machine you built it on, you can
+leave `LIBS=` out.
+
+Confirm afterwards that only stock libraries remain:
+
+```
+ldd /usr/local/bin/mpd_oled_cava
+```
+
+Expect `libasound.so.2`, `libm`, `libc` and nothing else.
 
 ### libu8g2arm with the CH341 transport
 

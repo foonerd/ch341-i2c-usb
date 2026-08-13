@@ -154,8 +154,8 @@ Nothing under `/boot`, nothing in `/lib/modules`, and no system
 configuration file modified. Uninstalling removes all of it.
 
 The payload is prebuilt and links only against libraries present on a
-stock image, with `libiniparser` statically linked into cava as the one
-exception. So the install needs no network and cannot drift with package
+stock image, with `libiniparser` and `libfftw3` statically linked into
+cava. So the install needs no network and cannot drift with package
 versions.
 
 ## Troubleshooting
@@ -172,7 +172,13 @@ the mode jumper and check `lsusb | grep 1a86` reports `5512`.
 SH1106 variants are worth trying even if the panel was sold as SSD1306.
 
 **No spectrum bars** — check `ls -l /tmp/ch341_oled_fifo` shows a FIFO,
-the leading character being `p`. Then confirm something is playing.
+the leading character being `p`. Then confirm something is playing. If
+the display updates on track change but never shows bars, check the
+journal for cava failing to start:
+
+```
+journalctl -u ch341_oled -n 50 --no-pager | grep -i cava
+```
 
 **Nothing plays after enabling** — disable the plugin, which rebuilds
 the ALSA chain without the fragment and restores audio, then report it.
