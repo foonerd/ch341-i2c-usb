@@ -1,3 +1,4 @@
 *.o
 *.a
 /ch341_probe
+build/out/

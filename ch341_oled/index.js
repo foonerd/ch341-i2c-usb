@@ -166,6 +166,15 @@ ch341Oled.prototype.buildArgs = function () {
   args.push('-L', self.config.get('layout', 't'));
   args.push('-f', String(self.config.get('frameRate', 50)));
 
+  // Player status polling interval.
+  //
+  // On Volumio each poll is an HTTP request to the player API, and the
+  // backend logs every call while assembling player state. mpd_oled
+  // defaults to 0.3 s, which put six requests per second into the
+  // journal continuously. One second is indistinguishable on a display
+  // showing elapsed time to the second.
+  args.push('-u', String(self.config.get('pollSeconds', 1.0)));
+
   var o = self.config.get('oledModel', 'SSD1306,128X64_NONAME');
   o += ',I2C';
   o += ',ch341=' + self.config.get('ch341Index', 0);

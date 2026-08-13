@@ -35,6 +35,10 @@
     "value": "t",
     "type": "string"
   },
+  "pollSeconds": {
+    "value": 1.0,
+    "type": "number"
+  },
   "pauseScreenType": {
     "value": "s",
     "type": "string"

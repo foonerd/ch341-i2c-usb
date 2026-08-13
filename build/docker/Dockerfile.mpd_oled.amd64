@@ -1,0 +1,31 @@
+FROM debian:bookworm
+
+# Build environment for the ch341_oled plugin payload.
+#
+# Debian Bookworm amd64, matching Volumio 4's base, so the binaries link
+# against the same glibc the target has.
+#
+# The -dev packages here are build-time only. Of their runtime libraries,
+# libmpdclient2, libusb-1.0-0 and libasound2 are present on a stock
+# Volumio image, while libfftw3 and libiniparser are not - those two are
+# statically linked into cava by the build script, and the script fails
+# if they end up dynamic.
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    autoconf \
+    automake \
+    autoconf-archive \
+    libtool \
+    pkg-config \
+    libusb-1.0-0-dev \
+    libmpdclient-dev \
+    libasound2-dev \
+    libfftw3-dev \
+    libiniparser-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
