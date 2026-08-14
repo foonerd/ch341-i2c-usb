@@ -122,7 +122,8 @@
           "gapBetweenBars",
           "frameRate",
           "spectrumEnabled",
-          "spectrumDelayMs"
+          "spectrumDelayMs",
+          "spectrumSensitivity"
         ]
       },
       "content": [
@@ -178,6 +179,18 @@
             { "max": 2000 }
           ],
           "value": 0
+        },
+        {
+          "id": "spectrumSensitivity",
+          "element": "input",
+          "type": "number",
+          "label": "TRANSLATE.SPECTRUM_SENSITIVITY",
+          "doc": "TRANSLATE.SPECTRUM_SENSITIVITY_DOC",
+          "attributes": [
+            { "min": 0 },
+            { "max": 500 }
+          ],
+          "value": 100
         }
       ]
     }

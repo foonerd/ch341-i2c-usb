@@ -189,6 +189,16 @@ ch341Oled.prototype.buildArgs = function () {
     args.push('-D', String(delayMs));
   }
 
+  // Spectrum sensitivity.
+  //
+  // Always passed, including 0, which selects cava's automatic
+  // sensitivity. Fixed is the default because the ALSA tap is taken
+  // ahead of the volume stage: the level reaching cava never varies, so
+  // automatic has nothing to track except the silence between tracks -
+  // it raises the gain during a gap and then cuts it back when the music
+  // returns, which shows as full-height bars after every pause.
+  args.push('-S', String(self.config.get('spectrumSensitivity', 100)));
+
   var o = self.config.get('oledModel', 'SSD1306,128X64_NONAME');
   o += ',I2C';
   o += ',ch341=' + self.config.get('ch341Index', 0);
@@ -348,6 +358,7 @@ ch341Oled.prototype.getUIConfig = function () {
         uiconf.sections[2].content[2].value = self.config.get('frameRate', 50);
         uiconf.sections[2].content[3].value = self.config.get('spectrumEnabled', true);
         uiconf.sections[2].content[4].value = self.config.get('spectrumDelayMs', 0);
+        uiconf.sections[2].content[5].value = self.config.get('spectrumSensitivity', 100);
       } catch (e) {
         self.logger.error('ch341_oled: getUIConfig populate failed: ' + e);
       }
@@ -433,6 +444,8 @@ ch341Oled.prototype.saveLayoutSettings = function (data) {
     self.config.set('frameRate', self.uiInt(data, 'frameRate', 50));
     self.config.set('spectrumEnabled', self.uiBool(data, 'spectrumEnabled', true));
     self.config.set('spectrumDelayMs', self.uiInt(data, 'spectrumDelayMs', 0));
+    self.config.set('spectrumSensitivity',
+                    self.uiInt(data, 'spectrumSensitivity', 100));
   } catch (e) {
     self.logger.error('ch341_oled: saveLayoutSettings: ' + e);
     return self.reportSave(false);

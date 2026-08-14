@@ -43,6 +43,10 @@
     "value": 0,
     "type": "number"
   },
+  "spectrumSensitivity": {
+    "value": 100,
+    "type": "number"
+  },
   "pauseScreenType": {
     "value": "s",
     "type": "string"

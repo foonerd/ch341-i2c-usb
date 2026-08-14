@@ -59,6 +59,26 @@ buffer, so the bars can run ahead of what you hear by however much that
 buffer holds. Start at 0 and increase in steps of 100 ms until the bars
 land on the beat.
 
+**Spectrum sensitivity** — how tall the bars are for a given signal
+level. 100 is the starting point; raise it if the bars are always small,
+lower it if they reach the top on ordinary material.
+
+Setting it to 0 hands the decision to cava's automatic sensitivity, and
+the plugin does not do that by default for a specific reason. Automatic
+adjustment exists because most audio captures sit *after* the volume
+control, so their level moves whenever the listener changes volume. This
+tap sits *before* the volume stage, at a fixed rate and format, so its
+level never varies — there is nothing for automatic adjustment to
+follow except the silence between tracks. It reads a gap as a quiet
+input, raises the gain, and then cuts back sharply when the music
+returns, which shows as the bars filling the display for several seconds
+after every pause. Upstream documents the startup case of this in
+[karlstav/cava#404](https://github.com/karlstav/cava/issues/404); the
+repetition after each gap is the same mechanism.
+
+A fixed value also means a quiet passage looks quiet, instead of being
+amplified until it fills the display.
+
 ## How it works
 
 ```mermaid
@@ -240,6 +260,15 @@ journalctl -u ch341_oled -n 50 --no-pager | grep -i cava
 **Bars run ahead of the sound** — raise the Spectrum delay setting. The
 tap is upstream of the audio output buffer, so this is expected rather
 than a fault.
+
+**Bars fill the display for a few seconds after every pause** — the
+Spectrum sensitivity setting is 0, which selects automatic adjustment.
+Set it to 100 and tune from there. See the setting's description above
+for why automatic does not suit this signal path.
+
+**Bars always small, or always at the top** — adjust Spectrum
+sensitivity. It is a fixed gain, so it needs setting once for your
+system.
 
 **Nothing plays after enabling** — disable the plugin, which rebuilds
 the ALSA chain without the fragment and restores audio, then report it.
