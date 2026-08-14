@@ -21,8 +21,12 @@ var execSync = require('child_process').execSync;
 var PLUGIN_DIR = '/data/plugins/system_hardware/ch341_oled';
 var START_SCRIPT = PLUGIN_DIR + '/start.sh';
 var SERVICE = 'ch341_oled';
-var FIFO = '/tmp/ch341_oled_fifo';
 var BIN = '/usr/local/bin/mpd_oled';
+
+// cava reads the capture side of the ALSA loopback that the plugin's
+// asound contribution writes to. Subdevice 1 is used to stay clear of
+// the peppy plugins, which take the first free one.
+var CAVA_SOURCE = 'alsa,hw:Loopback,1,1';
 
 module.exports = ch341Oled;
 
@@ -51,15 +55,12 @@ ch341Oled.prototype.onStart = function () {
   var self = this;
   var defer = libQ.defer();
 
-  // Order matters. The FIFO must exist before the ALSA config is
-  // regenerated, because regeneration makes MPD reopen the chain
-  // immediately, and volumiofifo does not create the FIFO itself - if it
-  // is missing the whole chain fails to resolve and playback stops with
-  // "Failed to open ALSA device volumio".
-  self.createFifo();
-
   self.writeStartScript();
 
+  // Rebuild the ALSA chain so this plugin's contribution is included.
+  // Nothing has to be created first - the tap terminates at an ALSA
+  // loopback device that already exists, unlike the FIFO an earlier
+  // version of this plugin had to make before the chain would resolve.
   self.commandRouter.executeOnPlugin('audio_interface', 'alsa_controller',
     'updateALSAConfigFile', '');
 
@@ -78,60 +79,19 @@ ch341Oled.prototype.onStart = function () {
   return defer.promise;
 };
 
-/*
-  Create the FIFO cava reads.
-
-  Mode 646 so that ALSA, writing as whichever user owns the playback
-  process, can open it for writing while cava reads it as volumio.
-
-  Anything already at the path is removed first. A stale FIFO left by an
-  unclean stop would make mkfifo fail with EEXIST, and an early version
-  of this plugin used the ALSA "file" plugin, which creates a large
-  regular file there instead. Either would break the chain with no
-  obvious cause, so neither is tolerated.
-*/
-ch341Oled.prototype.createFifo = function () {
-  var self = this;
-
-  try {
-    execSync('/bin/rm -f ' + FIFO, { uid: 1000, gid: 1000 });
-  } catch (e) {
-    self.logger.error('ch341_oled: cannot clear ' + FIFO + ': ' + e);
-  }
-
-  try {
-    execSync('/usr/bin/mkfifo -m 646 ' + FIFO, { uid: 1000, gid: 1000 });
-    self.logger.info('ch341_oled: created ' + FIFO);
-  } catch (e) {
-    self.logger.error('ch341_oled: cannot create ' + FIFO + ': ' + e);
-  }
-};
-
-ch341Oled.prototype.removeFifo = function () {
-  var self = this;
-
-  try {
-    execSync('/bin/rm -f ' + FIFO, { uid: 1000, gid: 1000 });
-  } catch (e) {
-    self.logger.error('ch341_oled: cannot remove ' + FIFO + ': ' + e);
-  }
-};
-
 ch341Oled.prototype.onStop = function () {
   var self = this;
   var defer = libQ.defer();
 
   self.stopService()
     .then(function () {
-      // Rebuild the chain without our contribution first, so nothing is
-      // still writing to the FIFO when it is removed.
+      // Rebuild the chain without our contribution, so nothing keeps
+      // writing to the loopback.
       self.commandRouter.executeOnPlugin('audio_interface', 'alsa_controller',
         'updateALSAConfigFile', '');
-      self.removeFifo();
       defer.resolve();
     })
     .fail(function () {
-      self.removeFifo();
       defer.resolve();
     });
 
@@ -213,7 +173,7 @@ ch341Oled.prototype.buildArgs = function () {
   args.push('-o', o);
 
   if (self.config.get('spectrumEnabled', true)) {
-    args.push('-c', 'fifo,' + FIFO);
+    args.push('-c', CAVA_SOURCE);
   }
 
   return args;

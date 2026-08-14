@@ -94,24 +94,36 @@ flowchart LR
     mr --> in["ch341oled_in<br/><i>rank 5</i>"]
     in --> split{"route + multi"}
     split -->|unconverted| out["ch341oled_out"]
-    split -->|"44100 S16_LE"| ff["volumiofifo"]
+    split -->|"44100 S16_LE"| tap["hw:Loopback,0,1"]
     out --> hw["volumioOutput<br/>volumioHw"]
-    ff --> fifo[("/tmp/ch341_oled_fifo")]
-    fifo --> cava["mpd_oled_cava"]
+    tap --> cap[("hw:Loopback,1,1<br/>capture side")]
+    cap --> cava["mpd_oled_cava"]
     classDef ours fill:#eef,stroke:#66c
-    class in,split,ff,fifo ours
+    class in,split,tap,cap ours
 ```
 
 Because the split happens at the ALSA layer rather than inside MPD, the
 spectrum works for **every** source — AirPlay, Spotify Connect, Tidal
 Connect and webradio, not only MPD.
 
-Two details in the fragment are not obvious and both matter. The FIFO
-branch uses `volumiofifo`, Volumio's own plugin, because the stock ALSA
-`file` plugin blocks on opening a FIFO until a reader attaches and would
-make playback depend on cava starting first. And the branch is wrapped
-in a `plug` forcing 44100/S16_LE/2, because cava's FIFO input assumes a
-rate rather than negotiating one.
+Three details in the fragment are not obvious and all three cost time to
+arrive at.
+
+The tap terminates at `hw:Loopback` rather than at a userspace FIFO
+plugin. A `multi` must find hardware parameters satisfying both of its
+branches at once, and a userspace plugin's buffer constraints entering
+that negotiation can leave no valid configuration on a device with rigid
+period sizing — a USB DAC behind a software mixer was the reported case,
+and ALSA aborts the caller outright. `snd_aloop` negotiates flexibly and
+follows the output device instead of fighting it. This is the terminus
+the peppyspectrum and peppymeterbasic plugins use on amd64.
+
+The `multi` is deliberately **not** pinned to a fixed rate. Pinning it
+would also avoid the negotiation problem, but forces both branches to
+that rate and would downsample all playback.
+
+The tap branch alone is pinned to 44100/S16_LE/2, because cava reads the
+loopback capture side and cannot follow a rate that changes per track.
 
 ## Lifecycle
 
@@ -122,7 +134,6 @@ sequenceDiagram
     participant A as alsa_controller
     participant S as systemd
     V->>P: onStart
-    P->>P: mkfifo -m 646 /tmp/ch341_oled_fifo
     P->>P: generate start.sh from settings
     P->>A: updateALSAConfigFile
     A->>A: rebuild /etc/asound.conf with our fragment
@@ -133,12 +144,11 @@ sequenceDiagram
     P->>S: systemctl stop ch341_oled
     P->>A: updateALSAConfigFile
     A->>A: rebuild without our fragment
-    P->>P: rm -f the FIFO
 ```
 
-The FIFO must exist before the ALSA config is regenerated: regeneration
-makes MPD reopen the chain immediately, `volumiofifo` does not create the
-FIFO itself, and a missing one makes the whole chain fail to resolve.
+The tap terminates at an ALSA loopback device that already exists on a
+stock system, so there is nothing for the plugin to create before the
+chain will resolve.
 
 ## What gets installed
 
@@ -171,13 +181,12 @@ the mode jumper and check `lsusb | grep 1a86` reports `5512`.
 **Blurred or wrong-looking text** — try a different panel model. The
 SH1106 variants are worth trying even if the panel was sold as SSD1306.
 
-**No spectrum bars** — check `ls -l /tmp/ch341_oled_fifo` shows a FIFO,
-the leading character being `p`. Then confirm something is playing. If
-the display updates on track change but never shows bars, check the
-journal for cava failing to start:
+**No spectrum bars** — confirm something is playing, then check cava
+started:
 
 ```
 journalctl -u ch341_oled -n 50 --no-pager | grep -i cava
+aplay -l | grep -i loopback
 ```
 
 **Nothing plays after enabling** — disable the plugin, which rebuilds
