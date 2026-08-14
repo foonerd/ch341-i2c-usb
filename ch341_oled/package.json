@@ -1,6 +1,6 @@
 {
   "name": "ch341_oled",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OLED display over a CH341A USB adapter, for x86 Volumio systems with no I2C bus",
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "prettyName": "CH341 OLED",
     "icon": "fa-television",
     "plugin_type": "system_hardware",
+    "boot_priority": 2,
     "details": "Drives an I2C OLED panel through a WCH CH341A USB adapter. Intended for x86 systems with no usable I2C bus. Uses a userspace transport, so there is no kernel module to rebuild and nothing that breaks on a system update.",
     "architectures": [
       "amd64"
@@ -20,7 +21,7 @@
     "os": [
       "bookworm"
     ],
-    "changelog": "Prototype"
+    "changelog": "Fix start/stop/reboot lifecycle, Software mixer abort, settings save"
   },
   "dependencies": {
     "fs-extra": "^8.1.0",
@@ -29,7 +30,7 @@
   },
   "engines": {
     "node": ">=20",
-    "volumio": ">=0"
+    "volumio": ">=4"
   },
   "repository": "https://github.com/foonerd/ch341-i2c-usb"
 }

@@ -24,7 +24,7 @@
   "FRAMERATE": "Frame rate",
   "FRAMERATE_DOC": "Requested frames per second. The USB adapter limits full-screen redraws to roughly 26 per second at 400 kHz, so higher values have no effect.",
   "SPECTRUM": "Spectrum analyser",
-  "SPECTRUM_DOC": "Show the audio spectrum. This inserts a tap into the audio chain to obtain a copy of the playback stream. Turn it off to leave the audio path untouched; the spectrum area will then stay blank.",
+  "SPECTRUM_DOC": "Show the audio spectrum. The audio tap stays in the chain while the plugin is enabled so Mixer Type Software, None and Hardware keep a stable path. Turn this off to leave the bars blank.",
   "SPECTRUM_DELAY": "Spectrum delay (ms)",
   "SPECTRUM_DELAY_DOC": "Delays the bars to match the sound. The spectrum is measured before the audio output buffer, so the bars can run ahead of what you hear by however much that buffer holds. How far ahead depends on your output device, so start at 0 and increase in steps of 100 until the bars land on the beat. A typical value is between 300 and 700."
 }

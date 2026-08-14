@@ -44,98 +44,101 @@ ch341Oled.prototype.onVolumioStart = function () {
   self.config = new (require('v-conf'))();
   self.config.loadFile(configFile);
 
+  // Volumio rebuilds asound.conf after every onVolumioStart and before
+  // onStart. The static ALSA snippet names this FIFO, so it has to exist
+  // here - not in onStart, which is too late on both boot and enable.
+  self.ensureFifo();
+
   return libQ.resolve();
 };
 
 ch341Oled.prototype.onStart = function () {
   var self = this;
-  var defer = libQ.defer();
 
-  // Order matters. The FIFO must exist before the ALSA config is
-  // regenerated, because regeneration makes MPD reopen the chain
-  // immediately, and volumiofifo does not create the FIFO itself - if it
-  // is missing the whole chain fails to resolve and playback stops with
-  // "Failed to open ALSA device volumio".
-  self.createFifo();
+  self.ensureFifo();
 
-  self.writeStartScript();
+  if (!self.writeStartScript()) {
+    self.logger.error('ch341_oled: cannot write start script');
+    self.commandRouter.pushToastMessage('error',
+      'CH341 OLED', 'Could not write the start script. Check the log.');
+    // Still resolve: the ALSA tap is live and the user can reach settings.
+    return libQ.resolve();
+  }
 
-  self.commandRouter.executeOnPlugin('audio_interface', 'alsa_controller',
-    'updateALSAConfigFile', '');
-
-  self.startService()
-    .then(function () {
-      defer.resolve();
-    })
+  // Do not rebuild ALSA here. Core already did that after onVolumioStart
+  // (enable and boot). A second rebuild with identical content skips the
+  // player reopen, and a fire-and-forget one races the service.
+  //
+  // Resolve even if the unit fails. A missing or slow adapter must not
+  // block enable, or the user cannot reach the settings page.
+  return self.startService()
     .fail(function (e) {
       self.logger.error('ch341_oled: failed to start: ' + e);
-      // Resolve anyway: a display that will not start should not block
-      // the plugin from being enabled, or the user cannot reach the
-      // settings page to correct it.
-      defer.resolve();
+      self.commandRouter.pushToastMessage('error',
+        'CH341 OLED', 'The display did not start. Check the log.');
+      return libQ.resolve();
     });
-
-  return defer.promise;
 };
 
 /*
-  Create the FIFO cava reads.
+  Create the FIFO cava reads, or leave a live one alone.
 
-  Mode 646 so that ALSA, writing as whichever user owns the playback
-  process, can open it for writing while cava reads it as volumio.
+  Mode 666, not 646. tmpfiles.d owns the pipe volumio:audio. MPD runs as
+  mpd and is in group audio, so 646 gives it group read-only and
+  pcm.volumio fails with Permission denied. 666 lets whichever playback
+  user write; cava still reads as volumio.
 
-  Anything already at the path is removed first. A stale FIFO left by an
-  unclean stop would make mkfifo fail with EEXIST, and an early version
-  of this plugin used the ALSA "file" plugin, which creates a large
-  regular file there instead. Either would break the chain with no
-  obvious cause, so neither is tolerated.
+  Never replace an existing FIFO. ALSA may already hold the inode after
+  the core ALSA rebuild; rm+mkfifo would leave writers on a dead pipe
+  and break playback. A leftover regular file from the old ALSA "file"
+  plugin is removed and replaced. Mode is always corrected.
 */
-ch341Oled.prototype.createFifo = function () {
+ch341Oled.prototype.ensureFifo = function () {
   var self = this;
 
   try {
-    execSync('/bin/rm -f ' + FIFO, { uid: 1000, gid: 1000 });
+    var st = fs.statSync(FIFO);
+    if (st.isFIFO()) {
+      try {
+        fs.chmodSync(FIFO, 0o666);
+      } catch (e) {
+        self.logger.error('ch341_oled: cannot chmod ' + FIFO + ': ' + e);
+      }
+      return true;
+    }
+    self.logger.info('ch341_oled: replacing non-FIFO at ' + FIFO);
+    fs.unlinkSync(FIFO);
   } catch (e) {
-    self.logger.error('ch341_oled: cannot clear ' + FIFO + ': ' + e);
+    if (e.code !== 'ENOENT') {
+      self.logger.error('ch341_oled: cannot stat ' + FIFO + ': ' + e);
+    }
   }
 
   try {
-    execSync('/usr/bin/mkfifo -m 646 ' + FIFO, { uid: 1000, gid: 1000 });
+    execSync('/usr/bin/mkfifo -m 666 ' + FIFO, { uid: 1000, gid: 1000 });
     self.logger.info('ch341_oled: created ' + FIFO);
+    return true;
   } catch (e) {
+    try {
+      if (fs.statSync(FIFO).isFIFO()) {
+        try { fs.chmodSync(FIFO, 0o666); } catch (ignored) {}
+        return true;
+      }
+    } catch (ignored) {}
     self.logger.error('ch341_oled: cannot create ' + FIFO + ': ' + e);
-  }
-};
-
-ch341Oled.prototype.removeFifo = function () {
-  var self = this;
-
-  try {
-    execSync('/bin/rm -f ' + FIFO, { uid: 1000, gid: 1000 });
-  } catch (e) {
-    self.logger.error('ch341_oled: cannot remove ' + FIFO + ': ' + e);
+    return false;
   }
 };
 
 ch341Oled.prototype.onStop = function () {
   var self = this;
-  var defer = libQ.defer();
 
-  self.stopService()
-    .then(function () {
-      // Rebuild the chain without our contribution first, so nothing is
-      // still writing to the FIFO when it is removed.
-      self.commandRouter.executeOnPlugin('audio_interface', 'alsa_controller',
-        'updateALSAConfigFile', '');
-      self.removeFifo();
-      defer.resolve();
-    })
-    .fail(function () {
-      self.removeFifo();
-      defer.resolve();
-    });
-
-  return defer.promise;
+  // Stop and disable the unit so it cannot come back as "active
+  // (running)" while the plugin is disabled. Do not rebuild ALSA - core
+  // disablePlugin does that after onStop, once enabled is false. Do not
+  // remove the FIFO: a mere stop leaves the snippet in asound.conf, and
+  // on disable the core rebuild drops the snippet first.
+  return self.stopService();
 };
 
 ch341Oled.prototype.onRestart = function () {
@@ -241,25 +244,29 @@ ch341Oled.prototype.writeStartScript = function () {
     fs.writeFileSync(START_SCRIPT, script, 'utf8');
     fs.chmodSync(START_SCRIPT, 0o755);
     self.logger.info('ch341_oled: ' + BIN + ' ' + quoted);
+    return true;
   } catch (e) {
     self.logger.error('ch341_oled: cannot write start script: ' + e);
+    return false;
   }
 };
 
 // ---------------------------------------------------------------- service
 
-ch341Oled.prototype.systemctl = function (verb) {
+ch341Oled.prototype.systemctl = function (verb, quiet) {
   var self = this;
   var defer = libQ.defer();
 
   exec('/usr/bin/sudo /bin/systemctl ' + verb + ' ' + SERVICE + '.service',
     { uid: 1000, gid: 1000 },
-    function (error) {
+    function (error, stdout) {
       if (error) {
-        self.logger.error('ch341_oled: systemctl ' + verb + ' failed: ' + error);
+        if (!quiet) {
+          self.logger.error('ch341_oled: systemctl ' + verb + ' failed: ' + error);
+        }
         defer.reject(error);
       } else {
-        defer.resolve();
+        defer.resolve(stdout);
       }
     });
 
@@ -267,17 +274,48 @@ ch341Oled.prototype.systemctl = function (verb) {
 };
 
 ch341Oled.prototype.startService = function () {
-  return this.systemctl('start');
+  var self = this;
+
+  // Enable first so systemd loads the unit. reset-failed before that
+  // logs "Unit not loaded" on the first enable after install.
+  // Type=simple: start returns when the process is spawned, not when
+  // the panel is up.
+  return self.systemctl('enable')
+    .fail(function (e) {
+      self.logger.info('ch341_oled: enable skipped: ' + e);
+      return libQ.resolve();
+    })
+    .then(function () {
+      return self.systemctl('reset-failed', true)
+        .fail(function () { return libQ.resolve(); });
+    })
+    .then(function () { return self.systemctl('start'); });
 };
 
 ch341Oled.prototype.stopService = function () {
-  return this.systemctl('stop');
+  var self = this;
+
+  return self.systemctl('stop')
+    .fail(function () { return libQ.resolve(); })
+    .then(function () {
+      return self.systemctl('disable')
+        .fail(function (e) {
+          self.logger.info('ch341_oled: disable skipped: ' + e);
+          return libQ.resolve();
+        });
+    });
 };
 
 ch341Oled.prototype.restartService = function () {
   var self = this;
-  self.writeStartScript();
-  return self.systemctl('restart');
+
+  if (!self.writeStartScript()) {
+    return libQ.reject(new Error('ch341_oled: cannot write start script'));
+  }
+
+  return self.systemctl('reset-failed', true)
+    .fail(function () { return libQ.resolve(); })
+    .then(function () { return self.systemctl('restart'); });
 };
 
 // ------------------------------------------------------------------- UI
@@ -291,30 +329,34 @@ ch341Oled.prototype.getUIConfig = function () {
     __dirname + '/i18n/strings_en.json',
     __dirname + '/UIConfig.json')
     .then(function (uiconf) {
-      // Section 0: display
-      uiconf.sections[0].content[0].value = self.config.get('oledModel', 'SSD1306,128X64_NONAME');
-      uiconf.sections[0].content[1].value = self.config.get('xoffset', 0);
-      uiconf.sections[0].content[2].value = self.config.get('i2cAddress', '');
-      uiconf.sections[0].content[3].value = self.config.get('rotateDisplay', false);
+      try {
+        var speed = self.config.get('ch341Speed', 2);
 
-      // Section 1: adapter
-      uiconf.sections[1].content[0].value = self.config.get('ch341Index', 0);
-      uiconf.sections[1].content[1].value.value = self.config.get('ch341Speed', 2);
-      uiconf.sections[1].content[1].value.label =
-        self.speedLabel(self.config.get('ch341Speed', 2));
+        uiconf.sections[0].content[0].value = self.config.get('oledModel', 'SSD1306,128X64_NONAME');
+        uiconf.sections[0].content[1].value = self.config.get('xoffset', 0);
+        uiconf.sections[0].content[2].value = self.config.get('i2cAddress', '');
+        uiconf.sections[0].content[3].value = self.config.get('rotateDisplay', false);
 
-      // Section 2: layout
-      uiconf.sections[2].content[0].value = self.config.get('numberOfBars', 20);
-      uiconf.sections[2].content[1].value = self.config.get('gapBetweenBars', 2);
-      uiconf.sections[2].content[2].value = self.config.get('frameRate', 50);
-      uiconf.sections[2].content[3].value = self.config.get('spectrumEnabled', true);
-      uiconf.sections[2].content[4].value = self.config.get('spectrumDelayMs', 0);
+        uiconf.sections[1].content[0].value = self.config.get('ch341Index', 0);
+        uiconf.sections[1].content[1].value = {
+          value: speed,
+          label: self.speedLabel(speed)
+        };
+
+        uiconf.sections[2].content[0].value = self.config.get('numberOfBars', 20);
+        uiconf.sections[2].content[1].value = self.config.get('gapBetweenBars', 2);
+        uiconf.sections[2].content[2].value = self.config.get('frameRate', 50);
+        uiconf.sections[2].content[3].value = self.config.get('spectrumEnabled', true);
+        uiconf.sections[2].content[4].value = self.config.get('spectrumDelayMs', 0);
+      } catch (e) {
+        self.logger.error('ch341_oled: getUIConfig populate failed: ' + e);
+      }
 
       defer.resolve(uiconf);
     })
     .fail(function (e) {
       self.logger.error('ch341_oled: getUIConfig failed: ' + e);
-      defer.reject(new Error());
+      defer.reject(new Error('ch341_oled: getUIConfig failed'));
     });
 
   return defer.promise;
@@ -325,13 +367,45 @@ ch341Oled.prototype.speedLabel = function (v) {
   return labels[v] !== undefined ? labels[v] : '400 kHz (default)';
 };
 
+ch341Oled.prototype.uiValue = function (data, key, fallback) {
+  var v = data && data[key];
+  if (v && typeof v === 'object' && v.value !== undefined) {
+    return v.value;
+  }
+  if (v === undefined || v === null || v === '') {
+    return fallback;
+  }
+  return v;
+};
+
+ch341Oled.prototype.uiInt = function (data, key, fallback) {
+  var n = parseInt(this.uiValue(data, key, fallback), 10);
+  return isNaN(n) ? fallback : n;
+};
+
+ch341Oled.prototype.uiBool = function (data, key, fallback) {
+  var v = this.uiValue(data, key, fallback);
+  if (v === true || v === 'true' || v === 1 || v === '1') {
+    return true;
+  }
+  if (v === false || v === 'false' || v === 0 || v === '0') {
+    return false;
+  }
+  return !!fallback;
+};
+
 ch341Oled.prototype.saveDisplaySettings = function (data) {
   var self = this;
 
-  self.config.set('oledModel', data.oledModel);
-  self.config.set('xoffset', parseInt(data.xoffset, 10) || 0);
-  self.config.set('i2cAddress', (data.i2cAddress || '').trim());
-  self.config.set('rotateDisplay', !!data.rotateDisplay);
+  try {
+    self.config.set('oledModel', String(self.uiValue(data, 'oledModel', 'SSD1306,128X64_NONAME')));
+    self.config.set('xoffset', self.uiInt(data, 'xoffset', 0));
+    self.config.set('i2cAddress', String(self.uiValue(data, 'i2cAddress', '')).trim());
+    self.config.set('rotateDisplay', self.uiBool(data, 'rotateDisplay', false));
+  } catch (e) {
+    self.logger.error('ch341_oled: saveDisplaySettings: ' + e);
+    return self.reportSave(false);
+  }
 
   return self.applyAndReport();
 };
@@ -339,8 +413,13 @@ ch341Oled.prototype.saveDisplaySettings = function (data) {
 ch341Oled.prototype.saveAdapterSettings = function (data) {
   var self = this;
 
-  self.config.set('ch341Index', parseInt(data.ch341Index, 10) || 0);
-  self.config.set('ch341Speed', parseInt(data.ch341Speed.value, 10));
+  try {
+    self.config.set('ch341Index', self.uiInt(data, 'ch341Index', 0));
+    self.config.set('ch341Speed', self.uiInt(data, 'ch341Speed', 2));
+  } catch (e) {
+    self.logger.error('ch341_oled: saveAdapterSettings: ' + e);
+    return self.reportSave(false);
+  }
 
   return self.applyAndReport();
 };
@@ -348,32 +427,45 @@ ch341Oled.prototype.saveAdapterSettings = function (data) {
 ch341Oled.prototype.saveLayoutSettings = function (data) {
   var self = this;
 
-  self.config.set('numberOfBars', parseInt(data.numberOfBars, 10) || 20);
-  self.config.set('gapBetweenBars', parseInt(data.gapBetweenBars, 10) || 2);
-  self.config.set('frameRate', parseInt(data.frameRate, 10) || 50);
-  self.config.set('spectrumEnabled', !!data.spectrumEnabled);
-  self.config.set('spectrumDelayMs', parseInt(data.spectrumDelayMs, 10) || 0);
+  try {
+    self.config.set('numberOfBars', self.uiInt(data, 'numberOfBars', 20));
+    self.config.set('gapBetweenBars', self.uiInt(data, 'gapBetweenBars', 2));
+    self.config.set('frameRate', self.uiInt(data, 'frameRate', 50));
+    self.config.set('spectrumEnabled', self.uiBool(data, 'spectrumEnabled', true));
+    self.config.set('spectrumDelayMs', self.uiInt(data, 'spectrumDelayMs', 0));
+  } catch (e) {
+    self.logger.error('ch341_oled: saveLayoutSettings: ' + e);
+    return self.reportSave(false);
+  }
 
   return self.applyAndReport();
 };
 
+ch341Oled.prototype.reportSave = function (ok) {
+  var self = this;
+
+  if (ok) {
+    self.commandRouter.pushToastMessage('success',
+      'CH341 OLED', self.commandRouter.getI18nString('COMMON.SETTINGS_SAVED_SUCCESSFULLY'));
+  } else {
+    self.commandRouter.pushToastMessage('error',
+      'CH341 OLED', 'The display did not restart. Check the log.');
+  }
+
+  return libQ.resolve({});
+};
+
 ch341Oled.prototype.applyAndReport = function () {
   var self = this;
-  var defer = libQ.defer();
 
-  self.restartService()
+  return self.restartService()
     .then(function () {
-      self.commandRouter.pushToastMessage('success',
-        'CH341 OLED', self.commandRouter.getI18nString('COMMON.SETTINGS_SAVED_SUCCESSFULLY'));
-      defer.resolve({});
+      return self.reportSave(true);
     })
-    .fail(function () {
-      self.commandRouter.pushToastMessage('error',
-        'CH341 OLED', 'The display did not restart. Check the log.');
-      defer.resolve({});
+    .fail(function (e) {
+      self.logger.error('ch341_oled: apply settings: ' + e);
+      return self.reportSave(false);
     });
-
-  return defer.promise;
 };
 
 ch341Oled.prototype.getConfigurationFiles = function () {

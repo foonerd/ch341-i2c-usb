@@ -73,10 +73,25 @@ sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=1a86 || true
 ########################################################################
 echo "Installing sudoers drop-in"
 sudo tee /etc/sudoers.d/volumio-ch341_oled >/dev/null <<'EOF'
-volumio ALL=(ALL) NOPASSWD: /bin/systemctl start ch341_oled.service, /bin/systemctl stop ch341_oled.service, /bin/systemctl restart ch341_oled.service
+volumio ALL=(ALL) NOPASSWD: /bin/systemctl start ch341_oled.service, /bin/systemctl stop ch341_oled.service, /bin/systemctl restart ch341_oled.service, /bin/systemctl enable ch341_oled.service, /bin/systemctl disable ch341_oled.service, /bin/systemctl is-active ch341_oled.service, /bin/systemctl reset-failed ch341_oled.service
 EOF
 sudo chmod 0440 /etc/sudoers.d/volumio-ch341_oled
 sudo visudo -c -f /etc/sudoers.d/volumio-ch341_oled
+
+########################################################################
+# FIFO for the spectrum tap
+#
+# asound.conf names /tmp/ch341_oled_fifo whenever the plugin is enabled.
+# /tmp is tmpfs, so the pipe must be created before sound.target and
+# before Volumio rebuilds ALSA. tmpfiles.d does that at boot; the plugin
+# also creates it in onVolumioStart as a backstop.
+########################################################################
+echo "Installing tmpfiles drop-in for the spectrum FIFO"
+sudo tee /etc/tmpfiles.d/ch341_oled.conf >/dev/null <<'EOF'
+# CH341 OLED spectrum tap - must exist before ALSA opens pcm.volumio
+p /tmp/ch341_oled_fifo 0666 volumio audio -
+EOF
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/ch341_oled.conf || true
 
 ########################################################################
 # Remove any out-of-tree CH341 kernel module
@@ -120,22 +135,33 @@ sudo chown -R volumio:volumio "$PLUGIN_DIR"
 sudo tee /etc/systemd/system/ch341_oled.service >/dev/null <<EOF
 [Unit]
 Description=CH341 OLED display
-After=network.target sound.target mpd.service
-Wants=mpd.service
+After=network.target sound.target systemd-tmpfiles-setup.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=volumio
 Group=audio
+ExecStartPre=/bin/sh -c 'test -p /tmp/ch341_oled_fifo || /usr/bin/mkfifo -m 666 /tmp/ch341_oled_fifo; chmod 666 /tmp/ch341_oled_fifo'
 ExecStart=$PLUGIN_DIR/start.sh
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=2
+# mpd_oled's SIGTERM handler calls clearDisplay() (USB I/O) while the
+# render loop may have a bulk transfer in flight. That floods
+# LIBUSB_ERROR_BUSY and can leave the adapter claimed. SIGKILL lets the
+# kernel release the interface; the new instance then claims it.
+KillSignal=SIGKILL
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+# Left disabled until the plugin is enabled. onStart enables the unit so
+# a reboot starts the display; onStop disables it so a disabled plugin
+# stays off.
 sudo systemctl disable ch341_oled.service || true
 
 echo "plugininstallend"

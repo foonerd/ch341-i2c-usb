@@ -6,8 +6,10 @@ systems, which have no usable I2C bus of their own.
 No kernel module, no compilation on the device, and no apt at install
 time. Nothing it installs is disturbed by a system update.
 
-> **Prototype.** Working and tested on Volumio 4.143 / amd64, but not in
-> the plugin store and not widely exercised.
+> **Prototype.** Not in the plugin store and not widely exercised.
+> Verified on Volumio 4.143 / amd64 with onboard HDA audio, across all
+> three Mixer Type settings (Software, Hardware, None), surviving reboot,
+> plugin enable and disable, and settings changes.
 
 ## What you need
 
@@ -52,6 +54,11 @@ alternate address.
 of 100 kHz. Reduce it if long leads or weak pull-up resistors make the
 display unreliable.
 
+**Spectrum delay** — the spectrum is measured before the audio output
+buffer, so the bars can run ahead of what you hear by however much that
+buffer holds. Start at 0 and increase in steps of 100 ms until the bars
+land on the beat.
+
 ## How it works
 
 ```mermaid
@@ -91,54 +98,98 @@ unaffected.
 flowchart LR
     src["MPD · AirPlay<br/>Spotify · Tidal"] --> vol["pcm.volumio"]
     vol --> mr["multiroom<br/><i>rank 1000</i>"]
-    mr --> in["ch341oled_in<br/><i>rank 5</i>"]
-    in --> split{"route + multi"}
-    split -->|unconverted| out["ch341oled_out"]
-    split -->|"44100 S16_LE"| ff["volumiofifo"]
-    out --> hw["volumioOutput<br/>volumioHw"]
+    mr --> in["ch341oled_in<br/><i>plug + multi, rank 5</i>"]
+    in -->|onward| out["ch341oled_out<br/><i>emitted by the backend</i>"]
+    in -->|tap| ff["volumiofifo"]
+    out --> sv["softvolume<br/><i>when Mixer Type is Software</i>"]
+    sv --> hw["volumioOutput<br/>volumioHw"]
     ff --> fifo[("/tmp/ch341_oled_fifo")]
     fifo --> cava["mpd_oled_cava"]
     classDef ours fill:#eef,stroke:#66c
-    class in,split,ff,fifo ours
+    class in,ff,fifo ours
 ```
 
 Because the split happens at the ALSA layer rather than inside MPD, the
 spectrum works for **every** source — AirPlay, Spotify Connect, Tidal
 Connect and webradio, not only MPD.
 
-Two details in the fragment are not obvious and both matter. The FIFO
-branch uses `volumiofifo`, Volumio's own plugin, because the stock ALSA
-`file` plugin blocks on opening a FIFO until a reader attaches and would
-make playback depend on cava starting first. And the branch is wrapped
-in a `plug` forcing 44100/S16_LE/2, because cava's FIFO input assumes a
-rate rather than negotiating one.
+Three things about the fragment are worth knowing, all of them learned
+the hard way.
+
+**One plug, wrapping the multi. Nothing else.** This is the shape the
+store `mpd_oled` snippet uses and it is the only one that survives all
+three Mixer Type settings. Putting a rate-forcing plug on the tap branch
+while the onward branch reaches `softvolume` gives the `multi` two
+contradictory format constraints — `S16_LE` against `S24_3LE` — which
+intersect to nothing, and ALSA aborts whatever is playing:
+
+```
+mpd: pcm_params.c:170: snd1_pcm_hw_param_get_min:
+     Assertion `!snd_interval_empty(i)' failed.
+```
+
+That fails only with Mixer Type Software, because None and Hardware do
+not insert `softvolume` and so nothing contradicts the forced format.
+
+**`volumiofifo`, unwrapped.** Its `format_3`, `format_4` and `format_5`
+settings are a width-to-output mapping, not a single-format constraint,
+so it is already flexible. Wrapping it in a converting plug is what makes
+it rigid. The stock ALSA `file` plugin is not an option — it blocks on
+opening a FIFO until a reader attaches, and creates a regular file and
+fills it if no FIFO exists.
+
+**`pcm.ch341oled_out` is not defined here.** The backend emits it as
+`type empty` and wires it to whatever comes next. Defining it in the
+fragment would collide with the chain builder.
 
 ## Lifecycle
 
 ```mermaid
 sequenceDiagram
+    participant B as boot
     participant V as Volumio
     participant P as plugin
     participant A as alsa_controller
     participant S as systemd
+    B->>B: tmpfiles.d creates /tmp/ch341_oled_fifo
+    V->>P: onVolumioStart
+    P->>P: ensureFifo (backstop)
+    V->>A: rebuild /etc/asound.conf
+    A->>A: includes our fragment when enabled
     V->>P: onStart
-    P->>P: mkfifo -m 646 /tmp/ch341_oled_fifo
     P->>P: generate start.sh from settings
-    P->>A: updateALSAConfigFile
-    A->>A: rebuild /etc/asound.conf with our fragment
-    P->>S: systemctl start ch341_oled
+    P->>S: enable, then start ch341_oled
+    S->>S: ExecStartPre re-checks the FIFO
     S->>S: start.sh → mpd_oled, which spawns cava
     Note over V,S: settings change → regenerate start.sh, restart service
     V->>P: onStop
-    P->>S: systemctl stop ch341_oled
-    P->>A: updateALSAConfigFile
-    A->>A: rebuild without our fragment
-    P->>P: rm -f the FIFO
+    P->>S: stop, then disable ch341_oled
+    V->>A: rebuild without our fragment
 ```
 
-The FIFO must exist before the ALSA config is regenerated: regeneration
-makes MPD reopen the chain immediately, `volumiofifo` does not create the
-FIFO itself, and a missing one makes the whole chain fail to resolve.
+The ordering matters and is easy to get wrong.
+
+`/tmp` is tmpfs, so the FIFO does not survive a reboot. The fragment
+names it whenever the plugin is enabled, and `volumiofifo` does not
+create it — if it is missing the whole chain fails to resolve and
+playback stops. So it is created three times over: by `tmpfiles.d` at
+boot, by `onVolumioStart` as a backstop, and by `ExecStartPre` before the
+service runs.
+
+`onStart` is too late. Volumio rebuilds `asound.conf` after
+`onVolumioStart` and before `onStart`, on both boot and enable.
+
+An existing FIFO is never replaced, only its mode corrected. ALSA may
+already hold the inode after the rebuild, and `rm` followed by `mkfifo`
+would leave writers attached to a dead pipe.
+
+The plugin does not call `updateALSAConfigFile` itself. Core already
+rebuilds after `onVolumioStart` and after `onStop`; a second call with
+identical content skips the player reopen, and a fire-and-forget one
+races the service.
+
+The unit is enabled in `onStart` and disabled in `onStop`, so a reboot
+starts the display and a disabled plugin stays off.
 
 ## What gets installed
 
@@ -147,6 +198,7 @@ FIFO itself, and a missing one makes the whole chain fail to resolve.
 /usr/local/bin/mpd_oled_cava               spectrum calculation
 /etc/udev/rules.d/60-ch341-i2c.rules       device permissions
 /etc/sudoers.d/volumio-ch341_oled          service control, scoped to this unit
+/etc/tmpfiles.d/ch341_oled.conf            recreates the FIFO at boot
 /etc/systemd/system/ch341_oled.service     the unit
 ```
 
@@ -171,14 +223,23 @@ the mode jumper and check `lsusb | grep 1a86` reports `5512`.
 **Blurred or wrong-looking text** — try a different panel model. The
 SH1106 variants are worth trying even if the panel was sold as SSD1306.
 
-**No spectrum bars** — check `ls -l /tmp/ch341_oled_fifo` shows a FIFO,
-the leading character being `p`. Then confirm something is playing. If
-the display updates on track change but never shows bars, check the
-journal for cava failing to start:
+**No spectrum bars** — check the FIFO exists and is a pipe, the leading
+character of the mode being `p`:
+
+```
+ls -l /tmp/ch341_oled_fifo
+```
+
+Then confirm something is playing. If the display updates on track change
+but never shows bars, check the journal for cava failing to start:
 
 ```
 journalctl -u ch341_oled -n 50 --no-pager | grep -i cava
 ```
+
+**Bars run ahead of the sound** — raise the Spectrum delay setting. The
+tap is upstream of the audio output buffer, so this is expected rather
+than a fault.
 
 **Nothing plays after enabling** — disable the plugin, which rebuilds
 the ALSA chain without the fragment and restores audio, then report it.
