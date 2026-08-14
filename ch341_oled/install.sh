@@ -147,12 +147,9 @@ ExecStartPre=/bin/sh -c 'test -p /tmp/ch341_oled_fifo || /usr/bin/mkfifo -m 666 
 ExecStart=$PLUGIN_DIR/start.sh
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=2
-# mpd_oled's SIGTERM handler calls clearDisplay() (USB I/O) while the
-# render loop may have a bulk transfer in flight. That floods
-# LIBUSB_ERROR_BUSY and can leave the adapter claimed. SIGKILL lets the
-# kernel release the interface; the new instance then claims it.
-KillSignal=SIGKILL
+# SIGTERM sets g_stop; the loop reaps cava, joins the poll thread, then
+# clearDisplay. 5 s covers that path. Do not use SIGKILL — it skips it.
+TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target
